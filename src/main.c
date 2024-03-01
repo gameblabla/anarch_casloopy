@@ -37,8 +37,6 @@
 
 // lower quality
 #define SFG_FPS 20
-#define SFG_SCREEN_RESOLUTION_X 256
-#define SFG_SCREEN_RESOLUTION_Y 224
 #define SFG_RAYCASTING_SUBSAMPLE 3
 #define SFG_RESOLUTION_SCALEDOWN 2
 #define SFG_DIMINISH_SPRITES 0
@@ -48,7 +46,7 @@
 #define SFG_RAYCASTING_MAX_HITS 5
 #define SFG_RAYCASTING_VISIBILITY_MAX_HITS 6
 #define SFG_CAN_EXIT 0
-#define SFG_DRAW_LEVEL_BACKGROUND 0
+#define SFG_DRAW_LEVEL_BACKGROUND 1
 
 /*
   SDL is easier to play thanks to nice controls so make the player take full
@@ -76,11 +74,29 @@
 #include "game_constants.h"
 #include "shared_objects.h"
 
+#if 1
+#define SFG_SCREEN_RESOLUTION_X 128
+#define SFG_SCREEN_RESOLUTION_Y 112
+#define SFG_RESOLUTION_SCALEDOWN 1
+uint32_t framebuffer[(256*240)/4];
+static inline void SFG_setPixel(int32_t x, int32_t y, int32_t colorIndex)
+{
+    // Calculate the index into the framebuffer, accounting for the spacing
+    //uint32_t index = ((y << 1) * SFG_SCREEN_RESOLUTION_X) + x;
+    int32_t index = (y << 8) + x;
+    int32_t c = (uint32_t)((colorIndex << 8) | colorIndex);
+    
+    // Write the color index to the framebuffer for two consecutive lines
+    ((int16_t*)framebuffer)[index] = c;
+    ((int16_t*)framebuffer)[index + SFG_SCREEN_RESOLUTION_X] = c;
+}
+#endif
+
+
 #include "game.h"
 #include "sounds.h"
 
 uint32_t ticks = 0;
-unsigned char framebuffer[256*224];
 
 //vu8 *framebuffer = (vu8* ) &MARS_FRAMEBUFFER;
 //#define framebuffer VDP_BITMAP_VRAM2_8
@@ -100,11 +116,6 @@ void SFG_clearScreen(uint8_t color)
 }*/
 
 // now implement the Anarch API functions (SFG_*)
-
-void SFG_setPixel(uint16_t x, uint16_t y, uint8_t colorIndex)
-{
-    framebuffer[y * SFG_SCREEN_RESOLUTION_X + x] = colorIndex;
-}
 
 uint32_t SFG_getTimeMs()
 {
@@ -431,8 +442,9 @@ const uint8_t cur_pal[768] = {0,0,0,2,3,2,11,13,11,37,33,32,76,78,76,130,132,130
 int main(int argc, char *argv[])
 {
 	maskInterrupts(0) ;
-	// Set 256x240 mode instead of 256x224
-	VDP_MODE = 0b00000000;
+
+	// Don't forget to set control bit
+	VDP_MODE = 0b00010000;
 	
     //Screen display mode
     VDP_DISPMODE = 0x00;
@@ -464,15 +476,15 @@ int main(int argc, char *argv[])
 	VDP_BMn_HEIGHT[0] = 255;
 
 	// Set X/Y Screen of the bitmap sprite
-	VDP_BMn_SCREENX[1] = 0;
+	/*VDP_BMn_SCREENX[1] = 0;
 	VDP_BMn_SCREENY[1] = 0;
 
 	// Width/Height of bitmap sprite
 	VDP_BMn_WIDTH[1] = 255;
-	VDP_BMn_HEIGHT[1] = 255;	
+	VDP_BMn_HEIGHT[1] = 255;	*/
 
 	Set_Pal(cur_pal);
-	memset32(VDP_BITMAP_VRAM2, 0xFFFFFFFFF, (256*224)/4);
+	memset32(VDP_BITMAP_VRAM2, 0x0, (256*224)/4);
 	
 	SFG_init();
   

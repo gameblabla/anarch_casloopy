@@ -114,7 +114,7 @@ void SFG_sleepMs(uint16_t timeMs);
   The function doesn't have to (and shouldn't, for the sake of performance)
   check whether the coordinates are within screen bounds.
 */
-static inline void SFG_setPixel(uint16_t x, uint16_t y, uint8_t colorIndex);
+//static inline void SFG_setPixel(uint16_t x, uint16_t y, uint8_t colorIndex);
 
 /**
   Play given sound effect (SFX). This function may or may not use the sound
@@ -130,7 +130,8 @@ void SFG_playSound(uint8_t soundIndex, uint8_t volume);
 #define SFG_MUSIC_TURN_OFF 0
 #define SFG_MUSIC_TURN_ON 1
 #define SFG_MUSIC_NEXT 2
-
+#define SFG_MUSIC_WIN 3
+#define SFG_MUSIC_TITLE 4
 /**
   Informs the frontend how music should play, e.g. turn on/off, change track,
   ... See SFG_MUSIC_* constants. Playing music is optional and the frontend may
@@ -245,10 +246,10 @@ typedef struct
 } SFG_DoorRecord;
 
 #define SFG_SPRITE_SIZE(size0to3) \
-  (((size0to3 + 3) * SFG_BASE_SPRITE_SIZE) / 4)
+  (((size0to3 + 3) * SFG_BASE_SPRITE_SIZE) >> 2)
 
 #define SFG_SPRITE_SIZE_TO_HEIGHT_ABOVE_GROUND(size0to3) \
-  (SFG_SPRITE_SIZE(size0to3) / 2)
+  (SFG_SPRITE_SIZE(size0to3) >> 1)
 
 #define SFG_SPRITE_SIZE_PIXELS(size0to3) \
   ((SFG_SPRITE_SIZE(size0to3) * SFG_SPRITE_MAX_SIZE) / RCL_UNITS_PER_SQUARE)
@@ -283,8 +284,8 @@ typedef struct
 #define SFG_MR_TYPE(mr) \
   (SFG_MONSTER_INDEX_TO_TYPE(((mr).stateType & SFG_MONSTER_MASK_TYPE) >> 4))
 
-#define SFG_MONSTER_COORD_TO_RCL_UNITS(c) ((RCL_UNITS_PER_SQUARE / 8) + c * 256)
-#define SFG_MONSTER_COORD_TO_SQUARES(c) (c / 4)
+#define SFG_MONSTER_COORD_TO_RCL_UNITS(c) ((RCL_UNITS_PER_SQUARE >> 3) + c * 256)
+#define SFG_MONSTER_COORD_TO_SQUARES(c) (c >> 2)
 
 #define SFG_ELEMENT_COORD_TO_RCL_UNITS(c) \
   (c * RCL_UNITS_PER_SQUARE + RCL_UNITS_PER_SQUARE / 2)
@@ -473,7 +474,7 @@ struct
   uint8_t teleporterCount;
   uint16_t mapRevealMask; /**< Bits say which parts of the map have been
                                revealed. */
-  uint8_t itemCollisionMap[(SFG_MAP_SIZE * SFG_MAP_SIZE) / 8];
+  uint8_t itemCollisionMap[(SFG_MAP_SIZE * SFG_MAP_SIZE) >> 3];
                           /**< Bit array, for each map square says whether there
                                is a colliding item or not. */
 } SFG_currentLevel;
@@ -495,7 +496,7 @@ void SFG_getItemCollisionMapIndex(
 {
   uint16_t index = y * SFG_MAP_SIZE + x;
 
-  *byte = index / 8;
+  *byte = index >> 3;
   *bit = index % 8;
 }
 
@@ -713,7 +714,7 @@ void SFG_levelEnds()
 
 static inline uint8_t SFG_RCLUnitToZBuffer(RCL_Unit x)
 {
-  x /= (RCL_UNITS_PER_SQUARE / 8);
+  x /= (RCL_UNITS_PER_SQUARE >> 3);
 
   uint8_t okay = x < 256;
 
@@ -851,7 +852,7 @@ void SFG_recomputePLayerDirection()
     / RCL_UNITS_PER_SQUARE;
 
   SFG_game.backgroundScroll =
-    ((SFG_player.camera.direction * 8) * SFG_GAME_RESOLUTION_Y)
+    ((SFG_player.camera.direction << 3) * SFG_GAME_RESOLUTION_Y)
     / RCL_UNITS_PER_SQUARE; 
 }
 
@@ -977,7 +978,7 @@ void SFG_pixelFunc(RCL_PixelInfo *pixel)
   if (color != SFG_TRANSPARENT_COLOR)
   {
 #if SFG_DITHERED_SHADOW
-    uint8_t fogShadow = (pixel->depth * 8) / SFG_FOG_DIMINISH_STEP;
+    uint8_t fogShadow = (pixel->depth << 3) / SFG_FOG_DIMINISH_STEP;
 
     uint8_t fogShadowPart = fogShadow & 0x07;
 
@@ -987,7 +988,7 @@ void SFG_pixelFunc(RCL_PixelInfo *pixel)
     uint8_t yMod2 = pixel->position.y & 0x01;
 
     shadow +=
-      fogShadow + SFG_ditheringPatterns[fogShadowPart * 8 + yMod2 * 4 + xMod4];
+      fogShadow + SFG_ditheringPatterns[fogShadowPart << 3 + yMod2 * 4 + xMod4];
 #else
     shadow += SFG_fogValueDiminish(pixel->depth);
 #endif
@@ -1051,6 +1052,8 @@ void SFG_blitImage(
   int16_t posY,
   uint8_t scale)
 {
+  if (scale == 0)
+    return;
  
   uint16_t x0 = posX,
            x1,
@@ -1131,6 +1134,9 @@ void SFG_drawScaledSprite(
   uint8_t minusValue,
   RCL_Unit distance)
 {
+  if (size == 0)
+    return;
+
   if (size > SFG_MAX_SPRITE_SIZE)
     size = SFG_MAX_SPRITE_SIZE;
 
@@ -1497,20 +1503,11 @@ uint8_t SFG_itemCollides(uint8_t elementType)
     elementType == SFG_LEVEL_ELEMENT_LAMP;
 }
 
-extern void *memset32(void *dest, int c, size_t n);
-
 void SFG_setGameState(uint8_t state)
 {
   SFG_LOG("changing game state");
   SFG_game.state = state;
   SFG_game.stateTime = 0;
-  switch(state)
-  {
-	 case SFG_GAME_STATE_INTRO:
-	 case SFG_GAME_STATE_OUTRO:
-		memset32(VDP_BITMAP_VRAM2, 0x0000, (256*224)/4);
-	 break;  
-  }
 }
 
 void SFG_setAndInitLevel(uint8_t levelNumber)
@@ -1598,7 +1595,7 @@ void SFG_setAndInitLevel(uint8_t levelNumber)
 
   SFG_MonsterRecord *monster;
 
-  for (uint16_t i = 0; i < ((SFG_MAP_SIZE * SFG_MAP_SIZE) / 8); ++i)
+  for (uint16_t i = 0; i < ((SFG_MAP_SIZE * SFG_MAP_SIZE) >> 3); ++i)
     SFG_currentLevel.itemCollisionMap[i] = 0;
 
   for (uint8_t i = 0; i < SFG_MAX_LEVEL_ELEMENTS; ++i)
@@ -1723,7 +1720,7 @@ void SFG_init()
       for (uint8_t x = 0; x < SFG_TEXTURE_SIZE; ++x)
       {
         uint8_t color =
-          SFG_getTexel(SFG_wallTextures + i * SFG_TEXTURE_STORE_SIZE,x,y) / 4;
+          SFG_getTexel(SFG_wallTextures + i * SFG_TEXTURE_STORE_SIZE,x,y) >> 2;
 
         colorHistogram[color] += 1;
 
@@ -1784,6 +1781,7 @@ void SFG_init()
   SFG_setMusic((SFG_game.settings & 0x02) ?
     SFG_MUSIC_TURN_ON : SFG_MUSIC_TURN_OFF);
 
+ SFG_setMusic(SFG_MUSIC_TITLE);
 #if SFG_START_LEVEL == 0
   SFG_setGameState(SFG_GAME_STATE_INIT);
 #else
@@ -3000,6 +2998,9 @@ void SFG_drawText(
   uint16_t maxLength,
   uint16_t limitX)
 {
+  if (size == 0)
+    size = 1;
+
   if (limitX == 0)
     limitX = 65535;
 
@@ -3098,6 +3099,7 @@ void SFG_winLevel()
 {
   SFG_levelEnds();
   SFG_setGameState(SFG_GAME_STATE_WIN);
+  SFG_setMusic(SFG_MUSIC_WIN);
   SFG_playGameSound(2,255); 
   SFG_processEvent(SFG_EVENT_VIBRATE,0);
   SFG_processEvent(SFG_EVENT_LEVEL_WON,SFG_currentLevel.levelNumber + 1);
@@ -3324,7 +3326,7 @@ void SFG_gameStepPlaying()
     // smoothly stop bobbing
 
     uint8_t quadrant = (SFG_player.headBobFrame % RCL_UNITS_PER_SQUARE) /
-      (RCL_UNITS_PER_SQUARE / 4);
+      (RCL_UNITS_PER_SQUARE >> 2);
 
     /* When in quadrant in which sin is going away from zero, switch to the
        same value of the next quadrant, so that bobbing starts to go towards
@@ -3332,9 +3334,9 @@ void SFG_gameStepPlaying()
 
     if (quadrant % 2 == 0)
       SFG_player.headBobFrame =
-        ((quadrant + 1) * RCL_UNITS_PER_SQUARE / 4) +
-        (RCL_UNITS_PER_SQUARE / 4 - SFG_player.headBobFrame %
-        (RCL_UNITS_PER_SQUARE / 4));
+        ((quadrant + 1) * RCL_UNITS_PER_SQUARE >> 2) +
+        (RCL_UNITS_PER_SQUARE >> 2 - SFG_player.headBobFrame %
+        (RCL_UNITS_PER_SQUARE >> 2));
 
     RCL_Unit currentFrame = SFG_player.headBobFrame;
     RCL_Unit nextFrame = SFG_player.headBobFrame + 16;
@@ -3876,7 +3878,7 @@ void SFG_gameStepMenu()
     SFG_game.selectedMenuItem--;
     SFG_playGameSound(3,SFG_MENU_CLICK_VOLUME);
   }
-  else if (SFG_keyJustPressed(SFG_KEY_A) || SFG_keyJustPressed(SFG_KEY_MENU))
+  else if (SFG_keyJustPressed(SFG_KEY_A))
   {
     switch (item)
     {
@@ -4035,8 +4037,8 @@ void SFG_gameStep()
             RCL_CAMERA_COLL_HEIGHT_BELOW) / SFG_LOSE_ANIMATION_DURATION);
 
       SFG_player.camera.shear = 
-        RCL_min(SFG_CAMERA_MAX_SHEAR_PIXELS / 4,
-        (t * (SFG_CAMERA_MAX_SHEAR_PIXELS / 4)) / SFG_LOSE_ANIMATION_DURATION);
+        RCL_min(SFG_CAMERA_MAX_SHEAR_PIXELS >> 2,
+        (t * (SFG_CAMERA_MAX_SHEAR_PIXELS >> 2)) / SFG_LOSE_ANIMATION_DURATION);
 
       if (t > SFG_LOSE_ANIMATION_DURATION && 
         (SFG_keyIsDown(SFG_KEY_A) || SFG_keyIsDown(SFG_KEY_B)))
@@ -4104,7 +4106,7 @@ void SFG_gameStep()
       break;
 
     case SFG_GAME_STATE_INTRO:
-      if (SFG_keyJustPressed(SFG_KEY_A) || SFG_keyJustPressed(SFG_KEY_B) || SFG_keyJustPressed(SFG_KEY_MENU))
+      if (SFG_keyJustPressed(SFG_KEY_A) || SFG_keyJustPressed(SFG_KEY_B))
         SFG_setAndInitLevel(0);
 
       break;
@@ -4119,6 +4121,7 @@ void SFG_gameStep()
         SFG_setGameState(SFG_GAME_STATE_MENU);
         SFG_playGameSound(3,SFG_MENU_CLICK_VOLUME);
         SFG_setMusic(SFG_MUSIC_TURN_ON);
+        SFG_setMusic(SFG_MUSIC_TITLE);
       }
 
       break;
@@ -4220,10 +4223,10 @@ void SFG_drawMap()
           {
             color = 0;
 
-            uint8_t c = SFG_TILE_CEILING_HEIGHT(tile) / 4;
+            uint8_t c = SFG_TILE_CEILING_HEIGHT(tile) >> 2;
 
             if (c != 0)
-              color = (SFG_TILE_FLOOR_HEIGHT(tile) % 8 + 3) * 8 + c - 1;
+              color = (SFG_TILE_FLOOR_HEIGHT(tile) % 8 + 3) << 3 + c - 1;
           }
         }
       }
@@ -4260,13 +4263,11 @@ void SFG_drawStoryText()
   SFG_clearScreen(clearColor);
 
   if (SFG_GAME_RESOLUTION_Y > 50) 
-  {
-
     SFG_blitImage(SFG_monsterSprites + sprite * SFG_TEXTURE_STORE_SIZE,
         (SFG_GAME_RESOLUTION_X - SFG_TEXTURE_SIZE * SFG_FONT_SIZE_SMALL) / 2,
         SFG_GAME_RESOLUTION_Y - (SFG_TEXTURE_SIZE + 3) * SFG_FONT_SIZE_SMALL,
         SFG_FONT_SIZE_SMALL);  
-  }
+
   uint16_t textLen = 0;
 
   while (text[textLen] != 0)
@@ -4472,16 +4473,8 @@ void SFG_drawMenu()
 
   uint16_t y = SFG_characterSize(SFG_FONT_SIZE_MEDIUM);
 
-
-	SFG_fillRectangle( // menu item highlight
-        0,
-        32,
-        SFG_GAME_RESOLUTION_X,
-        SFG_GAME_RESOLUTION_Y - 32, 175);
-
   SFG_blitImage(SFG_logoImage,SFG_GAME_RESOLUTION_X / 2 - 
     (SFG_TEXTURE_SIZE / 2) * SFG_FONT_SIZE_SMALL,y,SFG_FONT_SIZE_SMALL);
-
 
 #if SFG_GAME_RESOLUTION_Y > 50
   y += 32 * SFG_FONT_SIZE_MEDIUM + SFG_characterSize(SFG_FONT_SIZE_MEDIUM);
@@ -4518,12 +4511,12 @@ void SFG_drawMenu()
 
     if (i != SFG_game.selectedMenuItem)
       textColor = 23;
-    /*else
+    else
       SFG_fillRectangle( // menu item highlight
         SELECTION_START_X,
         y - SFG_FONT_SIZE_MEDIUM,
         SFG_GAME_RESOLUTION_X - SELECTION_START_X * 2,
-        SFG_characterSize(SFG_FONT_SIZE_MEDIUM),2);*/
+        SFG_characterSize(SFG_FONT_SIZE_MEDIUM),2);
   
     SFG_drawText(text,drawX,y,SFG_FONT_SIZE_MEDIUM,textColor,0,0);
 
@@ -4559,9 +4552,15 @@ void SFG_drawMenu()
     i++;
   }
   
-  SFG_drawText(SFG_VERSION_STRING " CC0, PORT GAMEBLABLA",SFG_HUD_MARGIN,SFG_GAME_RESOLUTION_Y -
+  SFG_drawText(SFG_VERSION_STRING " CC0,PORT GBB",SFG_HUD_MARGIN,SFG_GAME_RESOLUTION_Y -
     SFG_HUD_MARGIN - SFG_FONT_SIZE_SMALL * SFG_FONT_CHARACTER_SIZE,
     SFG_FONT_SIZE_SMALL,4,0,0);
+
+  #if SFG_OS_IS_MALWARE
+    if (SFG_game.blink)
+      SFG_drawText(SFG_MALWARE_WARNING,SFG_HUD_MARGIN,SFG_HUD_MARGIN,
+        SFG_FONT_SIZE_MEDIUM,95,0,0);
+  #endif
 
   #undef MAX_ITEMS
   #undef BACKGROUND_SCALE
@@ -4572,10 +4571,10 @@ void SFG_drawWinOverlay()
 {
   uint32_t t = RCL_min(SFG_WIN_ANIMATION_DURATION,SFG_game.stateTime);
 
-  uint32_t t2 = RCL_min(t,SFG_WIN_ANIMATION_DURATION / 4);
+  uint32_t t2 = RCL_min(t,SFG_WIN_ANIMATION_DURATION >> 2);
 
   #define STRIP_HEIGHT (SFG_GAME_RESOLUTION_Y / 2)
-  #define INNER_STRIP_HEIGHT ((STRIP_HEIGHT * 3) / 4)
+  #define INNER_STRIP_HEIGHT ((STRIP_HEIGHT * 3) >> 2)
   #define STRIP_START ((SFG_GAME_RESOLUTION_Y - STRIP_HEIGHT) / 2)
 
   RCL_Unit l = (t2 * STRIP_HEIGHT * 4) / SFG_WIN_ANIMATION_DURATION;
@@ -4851,7 +4850,7 @@ void SFG_draw()
             SFG_SPRITE_SIZE_PIXELS(2) *
             RCL_sin(          
               ((doubleFramesToLive -
-               proj->doubleFramesToLive) * RCL_UNITS_PER_SQUARE / 4)
+               proj->doubleFramesToLive) * RCL_UNITS_PER_SQUARE >> 2)
                / doubleFramesToLive) 
           ) / RCL_UNITS_PER_SQUARE;
       }
@@ -5011,7 +5010,7 @@ uint8_t SFG_mainLoopBody()
     {
       // wait, relieve CPU
       SFG_sleepMs(RCL_max(1,
-        (3 * (SFG_game.frameTime + SFG_MS_PER_FRAME - timeNow)) / 4));
+        (3 * (SFG_game.frameTime + SFG_MS_PER_FRAME - timeNow)) >> 2));
     }
   }
   else if (!SFG_keyPressed(SFG_KEY_A) && !SFG_keyPressed(SFG_KEY_B))
