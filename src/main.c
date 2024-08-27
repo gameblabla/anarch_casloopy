@@ -19,6 +19,7 @@
   be and remain completely in the public domain forever, available for any use
   whatsoever.
 */
+volatile void (*BiosVsync)(void) = (void (*)(void))0x6A5A;
 
 #if defined(_WIN32) || defined(WIN32) || defined(__WIN32__) || defined(__NT__) || defined(__APPLE__)
   #define SFG_OS_IS_MALWARE 1
@@ -38,7 +39,7 @@
 // lower quality
 #define SFG_FPS 20
 #define SFG_RAYCASTING_SUBSAMPLE 3
-#define SFG_RESOLUTION_SCALEDOWN 2
+//#define SFG_RESOLUTION_SCALEDOWN 2
 #define SFG_DIMINISH_SPRITES 0
 #define SFG_DITHERED_SHADOW 0
 #define SFG_BACKGROUND_BLUR 0
@@ -315,8 +316,7 @@ void mainLoopIteration()
     newpad0 = IO_CONTROLLER0;
 	
 	memcpy32(VDP_BITMAP_VRAM2, framebuffer, (256*224)/4);
-	
-	while(VDP_VCOUNT != 164) {};	
+
 	
 	ticks++;
 }
@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
 
     //Set bitmap render mode to 4bit 512x512
     //0x0 sets bitmap render mode to 8bit 256x256, along with a second 256x bitmap underneath.
-    VDP_BM_CTRL = 0x0000;
+    VDP_BM_CTRL = 0x0001;
 
     //Backdrop A/B refers to the "screen buffer"
     //Backdrop refers to solid fill color for each.
@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
 
 	//Width/Height of bitmap sprite
 	VDP_BMn_WIDTH[0] = 255;
-	VDP_BMn_HEIGHT[0] = 255;
+	VDP_BMn_HEIGHT[0] = 511;
 
 	// Set X/Y Screen of the bitmap sprite
 	/*VDP_BMn_SCREENX[1] = 0;
@@ -493,6 +493,7 @@ int main(int argc, char *argv[])
 	while (running)
 	{
 		mainLoopIteration();
+		BiosVsync();
 		
 	}
 
